@@ -7,14 +7,14 @@ public class Disassembler {
 
     private ArrayList<OPEntry> opcodes;
 
-    class OPEntry {
-        int bytes;
-        int code;
-        String name;
+    public class OPEntry {
+        public int bytes;
+        public byte code;
+        public String name;
 
         public OPEntry(String name, int code, int bytes) {
             this.name = name;
-            this.code = code;
+            this.code = (byte) code;
             this.bytes = bytes;
         }
     }
@@ -47,7 +47,7 @@ public class Disassembler {
         opcodes.add(new OPEntry("RAL    ", 0x17, 1));
         opcodes.add(new OPEntry("NOP    ", 0x18, 1));
         opcodes.add(new OPEntry("DAD    D", 0x19, 1));
-        opcodes.add(new OPEntry("LDAD   D", 0x1a, 1));
+        opcodes.add(new OPEntry("LDAX   D", 0x1a, 1));
         opcodes.add(new OPEntry("DCX    D", 0x1b, 1));
         opcodes.add(new OPEntry("INR    E", 0x1c, 1));
         opcodes.add(new OPEntry("DCR    E", 0x1d, 1));
@@ -279,19 +279,28 @@ public class Disassembler {
         opcodes.add(new OPEntry("RST    7", 0xff, 1));
     }
 
-    private OPEntry getOPDataFromCode(int code) {
+    public OPEntry getOPDataFromCode(byte code) {
         for (OPEntry o : opcodes)
             if (o.code == code) return o;
         return null;
     }
 
-    public void disassemble8080p(byte[] codeBuffer, int progCounter, int end, boolean hexDump) {
+    public String disassemble8080p(byte a, byte b, byte c) {
+        return disassemble8080p(new byte[]{a, b, c});
+    }
+
+    public String disassemble8080p(byte[] codeBuffer) {
+        return disassemble8080p(codeBuffer, 0, getOPDataFromCode(codeBuffer[0]).bytes - 1, false);
+    }
+
+    public String disassemble8080p(byte[] codeBuffer, int progCounter, int end, boolean hexDump) {
         int pc = progCounter;
+        String all = "";
 
         while (pc <= end) {
             byte c = codeBuffer[pc];
 
-            OPEntry op = getOPDataFromCode(Byte.toUnsignedInt(c));
+            OPEntry op = getOPDataFromCode(c);
 
             String finalLine = String.format("%04X ", pc);
 
@@ -309,23 +318,22 @@ public class Disassembler {
             else if (op.bytes == 3)
                 finalLine += "$" + DatatypeConverter.printHexBinary(new byte[]{codeBuffer[pc + 2], codeBuffer[pc + 1]});
 
-            System.out.println(finalLine);
-
+            all += finalLine + ((pc + op.bytes <= end || hexDump) ? "\n" : "");
             pc += op.bytes;
         }
-
-        System.out.println();
 
         if (hexDump) {
             int lines = (int) Math.ceil((end - progCounter) / 0x10);
             if (lines == 0) lines++;
 
             for (int i = 0; i <= lines; i++) {
-                System.out.print(String.format("%08X ", progCounter + i * 0x10));
+                all += String.format("%08X ", progCounter + i * 0x10);
                 for (int j = 0; j < 0x10; j++)
-                    System.out.print(" " + DatatypeConverter.printHexBinary(new byte[]{codeBuffer[progCounter + i * 0x10 + j]}));
-                System.out.println();
+                    all += " " + DatatypeConverter.printHexBinary(new byte[]{codeBuffer[progCounter + i * 0x10 + j]});
+                all += "\n";
             }
         }
+
+        return all;
     }
 }

@@ -1,5 +1,7 @@
 package com.slyth.emulator;
 
+import com.slyth.disassembler.Disassembler;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -12,11 +14,46 @@ public class Emulator {
         System.exit(1);
     }
 
-    public void emulate8080Op(State8080 state) {
+    void writeToHL(State8080 state, byte value) {
+        short offset = bytesToShort(state.l, state.h);//(short) ((short) (state.h << 8) | (short) (state.l));
+        state.memory[offset] = value;
+    }
+
+    byte readFromHL(State8080 state) {
+        short offset = bytesToShort(state.l, state.h);//(short) ((short) (state.h << 8) | (short) (state.l));
+        return state.memory[offset];
+    }
+
+    void flagsZSP(State8080 state, byte value) {
+        state.cc.z = (value == 0);
+        state.cc.s = (0x80 == (value & 0x80));
+        state.cc.p = parity(value, 8);
+    }
+
+    void arithFlagsA(State8080 state, short res) {
+        state.cc.cy = (res > 0xff);
+        state.cc.z = ((res & 0xff) == 0);
+        state.cc.s = (0x80 == (res & 0x80));
+        state.cc.p = parity(res & 0xff, 8);
+    }
+
+    boolean parity(int x, int size) {
+        int i;
+        int p = 0;
+        x = (x & ((1 << size) - 1));
+        for (i = 0; i < size; i++) {
+            if ((x & 0x1) == 1) p++;
+            x = x >> 1;
+        }
+
+        return 0 == (p & 0x1);
+    }
+
+    public void emulate8080Op(State8080 state, Disassembler disassembler) {
         byte opcode = state.memory[state.pc];
         int intOpCode = opcode & 0xFF;
 
-        System.out.println("Executing " + String.format("%x", state.pc) + ": 0x" + String.format("%x", intOpCode));
+        System.out.println(disassembler.disassemble8080p(state.memory, state.pc, state.pc, false));
 
         switch (intOpCode) {
             case 0x00:
@@ -24,7 +61,6 @@ public class Emulator {
             case 0x01:
                 state.c = state.memory[state.pc + 1];
                 state.b = state.memory[state.pc + 2];
-                state.pc += 2;
                 break;
             case 0x02:
                 unimplementedInstruction(state);
@@ -36,7 +72,8 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x05:
-                unimplementedInstruction(state);
+                state.b--;
+                flagsZSP(state, state.b);
                 break;
             case 0x06:
                 state.b = state.memory[state.pc + 1];
@@ -48,10 +85,16 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x09:
-                unimplementedInstruction(state);
+                int hl = bytesToShort(state.l, state.h);//((short) state.h << 8) | (short) state.l;
+                int bc = bytesToShort(state.c, state.b);//((short) state.b << 8) | (short) state.c;
+                int res = hl + bc;
+                state.h = (byte) ((res & 0xff00) >> 8);
+                state.l = (byte) (res & 0xff);
+                state.cc.cy = (res & 0xffff0000) != 0;
                 break;
             case 0x0a:
-                unimplementedInstruction(state);
+                short offset0a = bytesToShort(state.c, state.b);//(short) ((short) (state.b << 8) | (short) (state.c));
+                state.a = state.memory[offset0a];
                 break;
             case 0x0b:
                 unimplementedInstruction(state);
@@ -60,7 +103,8 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x0d:
-                unimplementedInstruction(state);
+                state.c--;
+                flagsZSP(state, state.c);
                 break;
             case 0x0e:
                 unimplementedInstruction(state);
@@ -72,13 +116,16 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x11:
-                unimplementedInstruction(state);
+                state.e = state.memory[state.pc + 1];
+                state.d = state.memory[state.pc + 2];
                 break;
             case 0x12:
                 unimplementedInstruction(state);
                 break;
             case 0x13:
-                unimplementedInstruction(state);
+                state.e++;
+                if (state.e == 0)
+                    state.d++;
                 break;
             case 0x14:
                 unimplementedInstruction(state);
@@ -99,7 +146,8 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x1a:
-                unimplementedInstruction(state);
+                short offset1a = bytesToShort(state.e, state.d);//(short) ((short) (state.d << 8) | (short) (state.e));
+                state.a = state.memory[offset1a];
                 break;
             case 0x1b:
                 unimplementedInstruction(state);
@@ -120,13 +168,15 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x21:
-                unimplementedInstruction(state);
+                state.h = state.memory[state.pc + 1];
                 break;
             case 0x22:
                 unimplementedInstruction(state);
                 break;
             case 0x23:
-                unimplementedInstruction(state);
+                state.l++;
+                if (state.l == 0)
+                    state.h++;
                 break;
             case 0x24:
                 state.h++;
@@ -183,7 +233,7 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x36:
-                unimplementedInstruction(state);
+                writeToHL(state, state.memory[state.pc + 1]);
                 break;
             case 0x37:
                 unimplementedInstruction(state);
@@ -213,7 +263,7 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0x40:
-                unimplementedInstruction(state);
+                state.b = state.b; // oh you
                 break;
             case 0x41:
                 state.b = state.c;
@@ -231,243 +281,215 @@ public class Emulator {
                 state.b = state.l;
                 break;
             case 0x46:
-                unimplementedInstruction(state);
+                state.b = readFromHL(state);
                 break;
             case 0x47:
-                unimplementedInstruction(state);
+                state.b = state.a;
                 break;
             case 0x48:
-                unimplementedInstruction(state);
+                state.c = state.b;
                 break;
             case 0x49:
-                unimplementedInstruction(state);
+                state.c = state.c;
                 break;
             case 0x4a:
-                unimplementedInstruction(state);
+                state.c = state.d;
                 break;
             case 0x4b:
-                unimplementedInstruction(state);
+                state.c = state.e;
                 break;
             case 0x4c:
-                unimplementedInstruction(state);
+                state.c = state.h;
                 break;
             case 0x4d:
-                unimplementedInstruction(state);
+                state.c = state.l;
                 break;
             case 0x4e:
-                unimplementedInstruction(state);
+                state.c = readFromHL(state);
                 break;
             case 0x4f:
-                unimplementedInstruction(state);
+                state.c = state.a;
                 break;
             case 0x50:
-                unimplementedInstruction(state);
+                state.d = state.b;
                 break;
             case 0x51:
-                unimplementedInstruction(state);
+                state.d = state.c;
                 break;
             case 0x52:
-                unimplementedInstruction(state);
+                state.d = state.d;
                 break;
             case 0x53:
-                unimplementedInstruction(state);
+                state.d = state.e;
                 break;
             case 0x54:
-                unimplementedInstruction(state);
+                state.d = state.h;
                 break;
             case 0x55:
-                unimplementedInstruction(state);
+                state.d = state.l;
                 break;
             case 0x56:
-                unimplementedInstruction(state);
+                state.d = readFromHL(state);
                 break;
             case 0x57:
-                unimplementedInstruction(state);
+                state.d = state.a;
                 break;
             case 0x58:
-                unimplementedInstruction(state);
+                state.e = state.b;
                 break;
             case 0x59:
-                unimplementedInstruction(state);
+                state.e = state.c;
                 break;
             case 0x5a:
-                unimplementedInstruction(state);
+                state.e = state.d;
                 break;
             case 0x5b:
-                unimplementedInstruction(state);
+                state.e = state.e;
                 break;
             case 0x5c:
-                unimplementedInstruction(state);
+                state.e = state.h;
                 break;
             case 0x5d:
-                unimplementedInstruction(state);
+                state.e = state.l;
                 break;
             case 0x5e:
-                unimplementedInstruction(state);
+                state.e = readFromHL(state);
                 break;
             case 0x5f:
-                unimplementedInstruction(state);
+                state.e = state.a;
                 break;
             case 0x60:
-                unimplementedInstruction(state);
+                state.h = state.b;
                 break;
             case 0x61:
-                unimplementedInstruction(state);
+                state.h = state.c;
                 break;
             case 0x62:
-                unimplementedInstruction(state);
+                state.h = state.d;
                 break;
             case 0x63:
-                unimplementedInstruction(state);
+                state.h = state.e;
                 break;
             case 0x64:
-                unimplementedInstruction(state);
+                state.h = state.h;
                 break;
             case 0x65:
-                unimplementedInstruction(state);
+                state.h = state.l;
                 break;
             case 0x66:
-                unimplementedInstruction(state);
+                state.h = readFromHL(state);
                 break;
             case 0x67:
-                unimplementedInstruction(state);
+                state.h = state.a;
                 break;
             case 0x68:
-                unimplementedInstruction(state);
+                state.l = state.b;
                 break;
             case 0x69:
-                unimplementedInstruction(state);
+                state.l = state.c;
                 break;
             case 0x6a:
-                unimplementedInstruction(state);
+                state.l = state.d;
                 break;
             case 0x6b:
-                unimplementedInstruction(state);
+                state.l = state.e;
                 break;
             case 0x6c:
-                unimplementedInstruction(state);
+                state.l = state.h;
                 break;
             case 0x6d:
-                unimplementedInstruction(state);
+                state.l = state.l;
                 break;
             case 0x6e:
-                unimplementedInstruction(state);
+                state.l = readFromHL(state);
                 break;
             case 0x6f:
-                unimplementedInstruction(state);
+                state.l = state.a;
                 break;
             case 0x70:
-                unimplementedInstruction(state);
+                writeToHL(state, state.b);
                 break;
             case 0x71:
-                unimplementedInstruction(state);
+                writeToHL(state, state.c);
                 break;
             case 0x72:
-                unimplementedInstruction(state);
+                writeToHL(state, state.d);
                 break;
             case 0x73:
-                unimplementedInstruction(state);
+                writeToHL(state, state.e);
                 break;
             case 0x74:
-                unimplementedInstruction(state);
+                writeToHL(state, state.h);
                 break;
             case 0x75:
-                unimplementedInstruction(state);
+                writeToHL(state, state.l);
                 break;
             case 0x76:
-                unimplementedInstruction(state);
                 break;
             case 0x77:
-                unimplementedInstruction(state);
+                writeToHL(state, state.a);
                 break;
             case 0x78:
-                unimplementedInstruction(state);
+                state.a = state.b;
                 break;
             case 0x79:
-                unimplementedInstruction(state);
+                state.a = state.c;
                 break;
             case 0x7a:
-                unimplementedInstruction(state);
+                state.a = state.d;
                 break;
             case 0x7b:
-                unimplementedInstruction(state);
+                state.a = state.e;
                 break;
             case 0x7c:
-                unimplementedInstruction(state);
+                state.a = state.h;
                 break;
             case 0x7d:
-                unimplementedInstruction(state);
+                state.a = state.l;
                 break;
             case 0x7e:
-                unimplementedInstruction(state);
+                state.a = readFromHL(state);
                 break;
             case 0x7f:
-                unimplementedInstruction(state);
+                state.a = state.a;
                 break;
             case 0x80:
                 short answer80 = (short) ((short) state.a + (short) state.b);
-                state.cc.z = (answer80 & 0xFF) == 0;
-                state.cc.s = (answer80 & 0x80) != 0;
-                state.cc.cy = answer80 > 0xFF;
-                state.cc.p = parity(answer80 & 0xFF);
+                arithFlagsA(state, answer80);
                 state.a = (byte) (answer80 & 0xFF);
                 break;
             case 0x81:
                 short answer81 = (short) ((short) state.a + (short) state.c);
-                state.cc.z = (answer81 & 0xFF) == 0;
-                state.cc.s = (answer81 & 0x80) != 0;
-                state.cc.cy = answer81 > 0xFF;
-                state.cc.p = parity(answer81 & 0xFF);
+                arithFlagsA(state, answer81);
                 state.a = (byte) (answer81 & 0xFF);
                 break;
             case 0x82:
                 short answer82 = (short) ((short) state.a + (short) state.d);
-                state.cc.z = (answer82 & 0xFF) == 0;
-                state.cc.s = (answer82 & 0x80) != 0;
-                state.cc.cy = answer82 > 0xFF;
-                state.cc.p = parity(answer82 & 0xFF);
+                arithFlagsA(state, answer82);
                 state.a = (byte) (answer82 & 0xFF);
                 break;
             case 0x83:
                 short answer83 = (short) ((short) state.a + (short) state.e);
-                state.cc.z = (answer83 & 0xFF) == 0;
-                state.cc.s = (answer83 & 0x80) != 0;
-                state.cc.cy = answer83 > 0xFF;
-                state.cc.p = parity(answer83 & 0xFF);
+                arithFlagsA(state, answer83);
                 state.a = (byte) (answer83 & 0xFF);
                 break;
             case 0x84:
                 short answer84 = (short) ((short) state.a + (short) state.h);
-                state.cc.z = (answer84 & 0xFF) == 0;
-                state.cc.s = (answer84 & 0x80) != 0;
-                state.cc.cy = answer84 > 0xFF;
-                state.cc.p = parity(answer84 & 0xFF);
+                arithFlagsA(state, answer84);
                 state.a = (byte) (answer84 & 0xFF);
                 break;
             case 0x85:
                 short answer85 = (short) ((short) state.a + (short) state.l);
-                state.cc.z = (answer85 & 0xFF) == 0;
-                state.cc.s = (answer85 & 0x80) != 0;
-                state.cc.cy = answer85 > 0xFF;
-                state.cc.p = parity(answer85 & 0xFF);
+                arithFlagsA(state, answer85);
                 state.a = (byte) (answer85 & 0xFF);
                 break;
             case 0x86:
-                short offset86 = (short) (((short) (state.h) << 8) | (short) (state.l));
-                short answer86 = (short) ((short) state.a + (short) state.memory[offset86]);
-                state.cc.z = (answer86 & 0xFF) == 0;
-                state.cc.s = (answer86 & 0x80) != 0;
-                state.cc.cy = answer86 > 0xFF;
-                state.cc.p = parity(answer86 & 0xFF);
+                short answer86 = (short) ((short) state.a + (short) readFromHL(state));
+                arithFlagsA(state, answer86);
                 state.a = (byte) (answer86 & 0xFF);
                 break;
             case 0x87:
-                short answer87 = (short) ((short) state.a + (short) state.a);
-                state.cc.z = (answer87 & 0xFF) == 0;
-                state.cc.s = (answer87 & 0x80) != 0;
-                state.cc.cy = answer87 > 0xFF;
-                state.cc.p = parity(answer87 & 0xFF);
-                state.a = (byte) (answer87 & 0xFF);
+                unimplementedInstruction(state);
                 break;
             case 0x88:
                 unimplementedInstruction(state);
@@ -644,11 +666,15 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0xc2:
-                unimplementedInstruction(state);
+                noPCAdd = true;
+                if (!state.cc.z)
+                    state.pc = bytesToShort(state.memory[state.pc + 1], state.memory[state.pc + 2]);
+                else
+                    noPCAdd = false;
                 break;
             case 0xc3:
-                state.pc = bytesToShort(state.memory[state.pc + 1], state.memory[state.pc + 2]);
                 noPCAdd = true;
+                state.pc = bytesToShort(state.memory[state.pc + 1], state.memory[state.pc + 2]);
                 break;
             case 0xc4:
                 unimplementedInstruction(state);
@@ -657,11 +683,9 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0xc6:
-                short answerc6 = (short) ((short) state.a + (short) state.memory[state.pc + 1]);
-                state.cc.z = (answerc6 & 0xFF) == 0;
-                state.cc.s = (answerc6 & 0x80) != 0;
-                state.cc.cy = answerc6 > 0xFF;
-                state.cc.p = parity(answerc6 & 0xFF);
+                short answerc6 = bytesToShort(state.memory[state.pc + 1], state.a);//(short) ((short) state.a + (short) state.memory[state.pc + 1]);
+                flagsZSP(state, (byte) (answerc6 & 0xff));
+                state.cc.cy = answerc6 > 0xff;
                 state.a = (byte) (answerc6 & 0xFF);
                 break;
             case 0xc7:
@@ -671,7 +695,10 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0xc9:
-                unimplementedInstruction(state);
+                noPCAdd = true;
+                state.pc = bytesToShort(state.memory[state.sp], state.memory[state.sp + 1]);//(short) ((short) (state.memory[state.sp]) | (short) (state.memory[state.sp + 1] >> 8));
+                state.pc++;
+                state.sp += 2;
                 break;
             case 0xca:
                 unimplementedInstruction(state);
@@ -683,7 +710,12 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0xcd:
-                unimplementedInstruction(state);
+                noPCAdd = true;
+                short ret = (short) (state.pc + 2);
+                state.memory[state.sp - 1] = (byte) (ret >> 8 & (byte) (0xff));
+                state.memory[state.sp - 2] = (byte) (ret & (byte) 0xff);
+                state.sp -= 2;
+                state.pc = bytesToShort(state.memory[state.pc + 1], state.memory[state.pc + 2]);
                 break;
             case 0xce:
                 unimplementedInstruction(state);
@@ -830,7 +862,9 @@ public class Emulator {
                 unimplementedInstruction(state);
                 break;
             case 0xfe:
-                unimplementedInstruction(state);
+                byte x = (byte) (state.a - state.memory[state.pc + 1]);
+                flagsZSP(state, x);
+                state.cc.cy = (state.a < state.memory[state.pc + 1]);
                 break;
             case 0xff:
                 unimplementedInstruction(state);
@@ -842,11 +876,7 @@ public class Emulator {
         if (noPCAdd)
             noPCAdd = false;
         else
-            state.pc++;
-    }
-
-    boolean parity(int num) {
-        return num % 2 == 0;
+            state.pc += disassembler.getOPDataFromCode(state.memory[state.pc]).bytes;
     }
 
     short bytesToShort(byte a, byte b) {

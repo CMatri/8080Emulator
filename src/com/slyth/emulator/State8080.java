@@ -22,4 +22,9 @@ public class State8080 {
     public byte[] memory;
     public ConditionCodes cc;
     public byte int_enable;
+
+    public State8080() {
+        sp = (short) 0xf000;
+        cc = new ConditionCodes();
+    }
 }
