@@ -91,7 +91,7 @@ public class Disassembler {
         opcodes.add(new OPEntry("MOV    B, E", 0x43, 1));
         opcodes.add(new OPEntry("MOV    B, H", 0x44, 1));
         opcodes.add(new OPEntry("MOV    B, L", 0x45, 1));
-        opcodes.add(new OPEntry("MOV    B, A", 0x46, 1));
+        opcodes.add(new OPEntry("MOV    B, M", 0x46, 1));
         opcodes.add(new OPEntry("MOV    B, A", 0x47, 1));
         opcodes.add(new OPEntry("MOV    C, B", 0x48, 1));
         opcodes.add(new OPEntry("MOV    C, C", 0x49, 1));
@@ -285,7 +285,7 @@ public class Disassembler {
         return null;
     }
 
-    public void disassemble8080p(byte[] codeBuffer, int progCounter, int end) {
+    public void disassemble8080p(byte[] codeBuffer, int progCounter, int end, boolean hexDump) {
         int pc = progCounter;
 
         while (pc <= end) {
@@ -315,14 +315,17 @@ public class Disassembler {
         }
 
         System.out.println();
-        int lines = (int) Math.ceil((end - progCounter) / 0x10);
-        if(lines == 0) lines++;
 
-        for(int i = 0; i <= lines; i++) {
-            System.out.print(String.format("%08X ", progCounter + i * 0x10));
-            for(int j = 0; j < 0x10; j += 2)
-                System.out.print(" " + DatatypeConverter.printHexBinary(new byte[]{codeBuffer[progCounter + i * 0x10 + j + 1], codeBuffer[progCounter + i * 0x10 + j]}));
-            System.out.println();
+        if (hexDump) {
+            int lines = (int) Math.ceil((end - progCounter) / 0x10);
+            if (lines == 0) lines++;
+
+            for (int i = 0; i <= lines; i++) {
+                System.out.print(String.format("%08X ", progCounter + i * 0x10));
+                for (int j = 0; j < 0x10; j++)
+                    System.out.print(" " + DatatypeConverter.printHexBinary(new byte[]{codeBuffer[progCounter + i * 0x10 + j]}));
+                System.out.println();
+            }
         }
     }
 }

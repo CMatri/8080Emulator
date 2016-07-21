@@ -1,6 +1,9 @@
 package com.slyth;
 
 import com.slyth.disassembler.Disassembler;
+import com.slyth.emulator.Emulator;
+import com.slyth.emulator.State8080;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +22,16 @@ public class Main {
         }
 
         Disassembler d = new Disassembler();
-        d.disassemble8080p(data, 0x18d4, 0x18e4);
+        d.disassemble8080p(data, 0, 0x18d4, false);
+
+        State8080 state = new State8080();
+        state.memory = data;
+
+        Emulator e = new Emulator();
+
+        for(int i = 0; i < 0x10; i++) {
+            e.emulate8080Op(state);
+        }
     }
 
     public static void main(String[] args) {
